@@ -11,6 +11,7 @@ from typing import Mapping
 
 _LEFT = "{{"
 _RIGHT = "}}"
+# Cached so the hot loop doesn't pay len() on every iteration.
 _LEFT_LEN = len(_LEFT)
 _RIGHT_LEN = len(_RIGHT)
 
