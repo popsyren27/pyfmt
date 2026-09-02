@@ -11,6 +11,8 @@ from typing import Mapping
 
 _LEFT = "{{"
 _RIGHT = "}}"
+_LEFT_LEN = len(_LEFT)
+_RIGHT_LEN = len(_RIGHT)
 
 
 def format(template: str, values: Mapping[str, object]) -> str:
@@ -31,19 +33,21 @@ def format(template: str, values: Mapping[str, object]) -> str:
 
         out.append(template[i:open_at])
 
-        close_at = template.find(_RIGHT, open_at + len(_LEFT))
+        close_at = template.find(_RIGHT, open_at + _LEFT_LEN)
         if close_at == -1:
-            # Unterminated placeholder. Keep the rest of the string as is.
+            # Unterminated placeholder. Keep the rest of the string as is
+            # rather than dropping it, otherwise the user gets a confusing
+            # truncated result with no hint about what went wrong.
             out.append(template[open_at:])
             break
 
-        name = template[open_at + len(_LEFT) : close_at].strip()
+        name = template[open_at + _LEFT_LEN : close_at].strip()
         if name in values:
             out.append(str(values[name]))
         else:
             # Leave the placeholder visible so missing keys are obvious.
-            out.append(template[open_at : close_at + len(_RIGHT)])
+            out.append(template[open_at : close_at + _RIGHT_LEN])
 
-        i = close_at + len(_RIGHT)
+        i = close_at + _RIGHT_LEN
 
     return "".join(out)
