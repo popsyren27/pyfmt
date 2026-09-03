@@ -2,7 +2,8 @@
 
 Templates use the syntax ``{{name}}`` to reference a key. Unknown keys
 are left in the output untouched so the caller can decide what to do
-with them.
+with them. The form ``{{name|default}}`` substitutes the literal
+``default`` when the key is missing or its value is ``None``.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ class TextSegment:
 class PlaceholderSegment:
     name: str
     raw: str  # The original "{{...}}" text from the template, with original whitespace.
+    default: str | None = None  # The literal after the pipe, if any.
 
 
 Segment = Union[TextSegment, PlaceholderSegment]
@@ -36,7 +38,8 @@ def _scan(template: str) -> Iterator[Segment]:
 
     A placeholder segment carries the parsed ``name`` and the ``raw`` text
     (with the original whitespace inside the braces) so callers can do
-    whatever they want with either representation.
+    whatever they want with either representation. If a ``|default``
+    suffix is present inside the braces, it is captured in ``default``.
     """
     i = 0
     length = len(template)
@@ -59,8 +62,18 @@ def _scan(template: str) -> Iterator[Segment]:
             return
 
         raw = template[open_at : close_at + _RIGHT_LEN]
-        name = template[open_at + _LEFT_LEN : close_at].strip()
-        yield PlaceholderSegment(name=name, raw=raw)
+        inner = template[open_at + _LEFT_LEN : close_at]
+        stripped = inner.strip()
+
+        if "|" in stripped:
+            name, _, default = stripped.partition("|")
+            name = name.strip()
+            default = default.strip()
+        else:
+            name = stripped
+            default = None
+
+        yield PlaceholderSegment(name=name, raw=raw, default=default)
 
         i = close_at + _RIGHT_LEN
 
@@ -70,13 +83,19 @@ def format(template: str, values: Mapping[str, object]) -> str:
 
     Lookup is case sensitive. If a name is not present in ``values`` the
     placeholder is left in the result so the caller can spot it.
+
+    A placeholder may use the form ``{{name|default}}``; when the key is
+    missing from ``values`` or its value is ``None``, ``default`` is
+    inserted as a literal string.
     """
     parts: list[str] = []
 
     for segment in _scan(template):
         if isinstance(segment, PlaceholderSegment):
-            if segment.name in values:
+            if segment.name in values and values[segment.name] is not None:
                 parts.append(str(values[segment.name]))
+            elif segment.default is not None:
+                parts.append(segment.default)
             else:
                 # Leave the placeholder visible so missing keys are obvious.
                 parts.append(segment.raw)

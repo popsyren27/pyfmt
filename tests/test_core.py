@@ -121,3 +121,45 @@ def test_values_supports_mapping_protocol():
             return key in self._data
 
     assert format("{{x}}", M({"x": "ok"})) == "ok"
+
+
+def test_default_used_when_key_missing():
+    assert format("{{name|anon}}", {}) == "anon"
+
+
+def test_default_used_when_value_is_none():
+    assert format("{{name|anon}}", {"name": None}) == "anon"
+
+
+def test_value_used_when_present_and_not_none():
+    assert format("{{name|anon}}", {"name": "world"}) == "world"
+
+
+def test_default_with_empty_string_value():
+    # Only None triggers the default; an empty string is a real value.
+    assert format("{{x|fallback}}", {"x": ""}) == ""
+
+
+def test_default_can_contain_braces_literal():
+    # Defaults are not re-scanned for placeholders.
+    assert format("{{x|{{y}}}}", {}) == "{{y}}"
+
+
+def test_default_with_whitespace_is_stripped():
+    assert format("{{name |  anon  }}", {"name": None}) == "anon"
+
+
+def test_default_only_placeholder():
+    # {{|hello}} strips the name to ""; empty name with no key -> default.
+    assert format("{{|hello}}", {}) == "hello"
+
+
+def test_default_does_not_apply_to_other_placeholders():
+    out = format("{{a|foo}}-{{missing}}-{{b|bar}}", {"a": "x"})
+    assert out == "x-{{missing}}-bar"
+
+
+def test_default_with_int_value_in_values():
+    assert format("{{n|0}}", {}) == "0"
+    assert format("{{n|0}}", {"n": None}) == "0"
+    assert format("{{n|0}}", {"n": 7}) == "7"
