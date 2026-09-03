@@ -166,3 +166,17 @@ def test_default_with_int_value_in_values():
     assert format("{{n|0}}", {}) == "0"
     assert format("{{n|0}}", {"n": None}) == "0"
     assert format("{{n|0}}", {"n": 7}) == "7"
+
+
+def test_default_can_be_empty():
+    # {{x|}} parses with default="" and renders as nothing, but only when
+    # the key is actually missing or None.
+    assert format("{{x|}}", {}) == ""
+    assert format("{{x|}}", {"x": None}) == ""
+    assert format("{{x|}}", {"x": "real"}) == "real"
+
+
+def test_default_only_uses_first_pipe_as_separator():
+    # Any pipes after the first are part of the default literal.
+    assert format("{{x|a|b|c}}", {}) == "a|b|c"
+    assert format("{{x|a|b|c}}", {"x": None}) == "a|b|c"
