@@ -41,9 +41,11 @@ def test_value_is_coerced_to_string():
     assert format("count: {{n}}", {"n": 42}) == "count: 42"
 
 
-def test_value_can_be_none():
-    # None is treated as missing; without a default the placeholder stays.
+def test_none_value_falls_through_to_default_or_placeholder():
+    # None is treated as missing: use the default if there is one,
+    # otherwise leave the placeholder visible.
     assert format("{{x}}", {"x": None}) == "{{x}}"
+    assert format("{{x|fallback}}", {"x": None}) == "fallback"
 
 
 def test_empty_template():
