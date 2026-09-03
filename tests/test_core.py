@@ -42,7 +42,8 @@ def test_value_is_coerced_to_string():
 
 
 def test_value_can_be_none():
-    assert format("{{x}}", {"x": None}) == "None"
+    # None is treated as missing; without a default the placeholder stays.
+    assert format("{{x}}", {"x": None}) == "{{x}}"
 
 
 def test_empty_template():
