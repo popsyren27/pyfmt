@@ -7,7 +7,8 @@ with them.
 
 from __future__ import annotations
 
-from typing import Mapping
+from dataclasses import dataclass
+from typing import Iterator, Mapping, Union
 
 _LEFT = "{{"
 _RIGHT = "}}"
@@ -16,39 +17,70 @@ _LEFT_LEN = len(_LEFT)
 _RIGHT_LEN = len(_RIGHT)
 
 
-def format(template: str, values: Mapping[str, object]) -> str:
-    """Replace ``{{name}}`` placeholders in ``template`` with values.
+@dataclass(frozen=True)
+class TextSegment:
+    text: str
 
-    Lookup is case sensitive. If a name is not present in ``values`` the
-    placeholder is left in the result so the caller can spot it.
+
+@dataclass(frozen=True)
+class PlaceholderSegment:
+    name: str
+    raw: str  # The original "{{...}}" text from the template, with original whitespace.
+
+
+Segment = Union[TextSegment, PlaceholderSegment]
+
+
+def _scan(template: str) -> Iterator[Segment]:
+    """Walk ``template`` and yield text and placeholder segments in order.
+
+    A placeholder segment carries the parsed ``name`` and the ``raw`` text
+    (with the original whitespace inside the braces) so callers can do
+    whatever they want with either representation.
     """
-    out: list[str] = []
     i = 0
     length = len(template)
 
     while i < length:
         open_at = template.find(_LEFT, i)
         if open_at == -1:
-            out.append(template[i:])
-            break
+            yield TextSegment(template[i:])
+            return
 
-        out.append(template[i:open_at])
+        if open_at > i:
+            yield TextSegment(template[i:open_at])
 
         close_at = template.find(_RIGHT, open_at + _LEFT_LEN)
         if close_at == -1:
             # Unterminated placeholder. Keep the rest of the string as is
             # rather than dropping it, otherwise the user gets a confusing
             # truncated result with no hint about what went wrong.
-            out.append(template[open_at:])
-            break
+            yield TextSegment(template[open_at:])
+            return
 
+        raw = template[open_at : close_at + _RIGHT_LEN]
         name = template[open_at + _LEFT_LEN : close_at].strip()
-        if name in values:
-            out.append(str(values[name]))
-        else:
-            # Leave the placeholder visible so missing keys are obvious.
-            out.append(template[open_at : close_at + _RIGHT_LEN])
+        yield PlaceholderSegment(name=name, raw=raw)
 
         i = close_at + _RIGHT_LEN
 
-    return "".join(out)
+
+def format(template: str, values: Mapping[str, object]) -> str:
+    """Replace ``{{name}}`` placeholders in ``template`` with values.
+
+    Lookup is case sensitive. If a name is not present in ``values`` the
+    placeholder is left in the result so the caller can spot it.
+    """
+    parts: list[str] = []
+
+    for segment in _scan(template):
+        if isinstance(segment, PlaceholderSegment):
+            if segment.name in values:
+                parts.append(str(values[segment.name]))
+            else:
+                # Leave the placeholder visible so missing keys are obvious.
+                parts.append(segment.raw)
+        else:
+            parts.append(segment.text)
+
+    return "".join(parts)
