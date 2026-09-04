@@ -180,3 +180,23 @@ def test_default_only_uses_first_pipe_as_separator():
     # Any pipes after the first are part of the default literal.
     assert format("{{x|a|b|c}}", {}) == "a|b|c"
     assert format("{{x|a|b|c}}", {"x": None}) == "a|b|c"
+
+
+def test_escaped_open_brace_renders_literally():
+    # \{{ is consumed as an escape; the braces appear as literal text
+    # and the value at "name" is NOT used.
+    assert format("\\{{name}}", {"name": "world"}) == "{{name}}"
+
+
+def test_escaped_open_brace_does_not_look_up_key():
+    assert format("\\{{name}}", {}) == "{{name}}"
+
+
+def test_escaped_close_brace_renders_literally():
+    # A lone \} has no matching {{, so it's just a literal }.
+    assert format("hi \\}", {}) == "hi }"
+
+
+def test_trailing_backslash_is_literal():
+    # A backslash with nothing to escape is left as-is.
+    assert format("path\\", {}) == "path\\"

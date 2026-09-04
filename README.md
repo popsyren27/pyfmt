@@ -22,6 +22,14 @@ format("hello {{name|stranger}}", {"name": None})
 # 'hello stranger'
 ```
 
+To write a literal `{{` in the output, escape it with a backslash. The
+backslash is consumed:
+
+```python
+format(r"\{{not a placeholder}}", {})
+# '{{not a placeholder}}'
+```
+
 ## Install
 
 ```

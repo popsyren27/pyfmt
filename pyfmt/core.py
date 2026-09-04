@@ -4,6 +4,9 @@ Templates use the syntax ``{{name}}`` to reference a key. Unknown keys
 are left in the output untouched so the caller can decide what to do
 with them. The form ``{{name|default}}`` substitutes the literal
 ``default`` when the key is missing or its value is ``None``.
+
+A backslash before ``{`` or ``}`` escapes the brace so it is treated as
+a literal character. The backslash itself is consumed.
 """
 
 from __future__ import annotations
@@ -40,6 +43,9 @@ def _scan(template: str) -> Iterator[Segment]:
     (with the original whitespace inside the braces) so callers can do
     whatever they want with either representation. If a ``|default``
     suffix is present inside the braces, it is captured in ``default``.
+
+    A backslash before ``{`` or ``}`` escapes the brace so it is treated
+    as a literal character. The backslash itself is consumed.
     """
     i = 0
     length = len(template)
@@ -51,6 +57,15 @@ def _scan(template: str) -> Iterator[Segment]:
             return
 
         if open_at > i:
+            # If the {{ is preceded by a backslash, the backslash is
+            # consumed and the {{ becomes literal text. Yield the prefix
+            # without the backslash, then a literal {{, and skip past
+            # both before resuming the scan.
+            if template[open_at - 1] == "\\":
+                yield TextSegment(template[i : open_at - 1] + "{{")
+                i = open_at + _LEFT_LEN
+                continue
+
             yield TextSegment(template[i:open_at])
 
         close_at = template.find(_RIGHT, open_at + _LEFT_LEN)
@@ -87,6 +102,10 @@ def format(template: str, values: Mapping[str, object]) -> str:
     A placeholder may use the form ``{{name|default}}``; when the key is
     missing from ``values`` or its value is ``None``, ``default`` is
     inserted as a literal string.
+
+    A backslash before a brace (``\{`` or ``\}``) escapes it, so the
+    brace is treated as a literal character. The backslash itself is
+    consumed.
     """
     parts: list[str] = []
 
@@ -100,6 +119,10 @@ def format(template: str, values: Mapping[str, object]) -> str:
                 # Leave the placeholder visible so missing keys are obvious.
                 parts.append(segment.raw)
         else:
-            parts.append(segment.text)
+            # Drop any backslashes that are escaping braces at the text
+            # level. These are backslashes preceding a { or } that the
+            # scanner didn't handle (e.g. a lone \}).
+            text = segment.text.replace("\\}", "}").replace("\\{", "{")
+            parts.append(text)
 
     return "".join(parts)
