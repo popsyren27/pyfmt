@@ -203,23 +203,40 @@ def test_trailing_backslash_is_literal():
 
 
 def test_escaped_close_brace_inside_placeholder_does_not_close():
-    # \} inside a placeholder body must not terminate the placeholder.
-    # The whole thing including the inner \} is one placeholder whose
-    # name retains the backslash (escapes don't rewrite the name).
-    out = format(r"{{a\}}}", {"a\\}": "v"})
+    # \} inside a placeholder body must not terminate the placeholder,
+    # and the body is cleaned so the name is the literal "a}".
+    out = format(r"{{a\}}}", {"a}": "v"})
     assert out == "v"
 
 
 def test_escaped_close_brace_in_placeholder_body_renders():
     # \} inside the body does not close the placeholder; the real }} does.
-    # Everything between {{ and the real }} is the body, so the trailing
-    # y is part of the placeholder name here.
-    out = format(r"x{{a\}}y}}", {"a\\}}y": "ok"})
+    # Body raw is "a\}}y"; cleaned body is "a}}y" (the escaped \} becomes
+    # a literal }).
+    out = format(r"x{{a\}}y}}", {"a}}y": "ok"})
     assert out == "xok"
 
 
 def test_placeholder_with_escaped_close_then_text():
-    # \} inside the body is literal; the real }} later closes the placeholder
-    # and the text after stays outside. The body includes the escaped \}.
-    out = format(r"{{a\}}rest}}tail", {"a\\}}rest": "v"})
+    # \} inside the body is literal; the real }} later closes the
+    # placeholder and the text after stays outside. Cleaned body is
+    # "a}}rest".
+    out = format(r"{{a\}}rest}}tail", {"a}}rest": "v"})
     assert out == "vtail"
+
+
+def test_escaped_open_brace_in_body_is_literal():
+    # \{ inside a placeholder body becomes a literal {. The body is
+    # cleaned, so the name is "a{b" and the value at that key is used.
+    out = format(r"{{a\{b}}", {"a{b": "v"})
+    assert out == "v"
+
+
+def test_escaped_pipe_in_body_splits_at_real_pipe_only():
+    # \| is consumed as an escape, so the first real | is the
+    # name/default split. The cleaned body is "a|b|c"; split gives
+    # name "a" and default "b|c".
+    out = format(r"{{a\|b|c}}", {"a": "v"})
+    assert out == "v"
+    # With no value, the default "b|c" is used.
+    assert format(r"{{a\|b|c}}", {"a": None}) == "b|c"

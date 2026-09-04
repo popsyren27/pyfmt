@@ -1,12 +1,13 @@
-"""Core template formatting logic for pyfmt.
+r"""Core template formatting logic for pyfmt.
 
 Templates use the syntax ``{{name}}`` to reference a key. Unknown keys
 are left in the output untouched so the caller can decide what to do
 with them. The form ``{{name|default}}`` substitutes the literal
 ``default`` when the key is missing or its value is ``None``.
 
-A backslash before ``{`` or ``}`` escapes the brace so it is treated as
-a literal character. The backslash itself is consumed.
+A backslash before a brace or pipe (``\{``, ``\}``, ``\|``) escapes the
+following character so it is treated as a literal. The backslash
+itself is consumed.
 """
 
 from __future__ import annotations
@@ -37,15 +38,13 @@ Segment = Union[TextSegment, PlaceholderSegment]
 
 
 def _scan(template: str) -> Iterator[Segment]:
-    """Walk ``template`` and yield text and placeholder segments in order.
+    r"""Walk ``template`` and yield text and placeholder segments in order.
 
     A placeholder segment carries the parsed ``name`` and the ``raw`` text
     (with the original whitespace inside the braces) so callers can do
-    whatever they want with either representation. If a ``|default``
-    suffix is present inside the braces, it is captured in ``default``.
-
-    A backslash before ``{`` or ``}`` escapes the brace so it is treated
-    as a literal character. The backslash itself is consumed.
+    whatever they want with either representation. The body is cleaned
+    of ``\{``, ``\}`` and ``\|`` escapes before the name and default
+    are extracted, so callers see the interpreted form.
     """
     i = 0
     length = len(template)
@@ -80,19 +79,43 @@ def _scan(template: str) -> Iterator[Segment]:
 
         raw = template[open_at : close_at + _RIGHT_LEN]
         inner = template[open_at + _LEFT_LEN : close_at]
-        stripped = inner.strip()
+        # Clean the body: \|, \{, and \} become literal pipe/brace and
+        # the backslash is consumed. The result is what the name (and
+        # default, after splitting) refer to.
+        cleaned = _clean_body(inner).strip()
 
-        if "|" in stripped:
-            name, _, default = stripped.partition("|")
+        if "|" in cleaned:
+            name, _, default = cleaned.partition("|")
             name = name.strip()
             default = default.strip()
         else:
-            name = stripped
+            name = cleaned
             default = None
 
         yield PlaceholderSegment(name=name, raw=raw, default=default)
 
         i = close_at + _RIGHT_LEN
+
+
+def _clean_body(body: str) -> str:
+    r"""Process escape sequences in a placeholder body.
+
+    Recognized escapes: ``\{`` -> ``{``, ``\}`` -> ``}``, ``\|`` -> ``|``.
+    The backslash is consumed; a trailing backslash with nothing to escape
+    is left as-is so the user can spot it.
+    """
+    out: list[str] = []
+    i = 0
+    length = len(body)
+    while i < length:
+        ch = body[i]
+        if ch == "\\" and i + 1 < length and body[i + 1] in "{}|":
+            out.append(body[i + 1])
+            i += 2
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def _find_closing(template: str, start: int) -> int:
@@ -112,7 +135,7 @@ def _find_closing(template: str, start: int) -> int:
 
 
 def format(template: str, values: Mapping[str, object]) -> str:
-    """Replace ``{{name}}`` placeholders in ``template`` with values.
+    r"""Replace ``{{name}}`` placeholders in ``template`` with values.
 
     Lookup is case sensitive. If a name is not present in ``values`` the
     placeholder is left in the result so the caller can spot it.
@@ -121,9 +144,9 @@ def format(template: str, values: Mapping[str, object]) -> str:
     missing from ``values`` or its value is ``None``, ``default`` is
     inserted as a literal string.
 
-    A backslash before a brace (``\{`` or ``\}``) escapes it, so the
-    brace is treated as a literal character. The backslash itself is
-    consumed.
+    A backslash before a brace or pipe (``\{``, ``\}``, ``\|``) escapes
+    the following character so it is treated as a literal. The backslash
+    itself is consumed.
     """
     parts: list[str] = []
 
