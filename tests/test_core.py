@@ -200,3 +200,26 @@ def test_escaped_close_brace_renders_literally():
 def test_trailing_backslash_is_literal():
     # A backslash with nothing to escape is left as-is.
     assert format("path\\", {}) == "path\\"
+
+
+def test_escaped_close_brace_inside_placeholder_does_not_close():
+    # \} inside a placeholder body must not terminate the placeholder.
+    # The whole thing including the inner \} is one placeholder whose
+    # name retains the backslash (escapes don't rewrite the name).
+    out = format(r"{{a\}}}", {"a\\}": "v"})
+    assert out == "v"
+
+
+def test_escaped_close_brace_in_placeholder_body_renders():
+    # \} inside the body does not close the placeholder; the real }} does.
+    # Everything between {{ and the real }} is the body, so the trailing
+    # y is part of the placeholder name here.
+    out = format(r"x{{a\}}y}}", {"a\\}}y": "ok"})
+    assert out == "xok"
+
+
+def test_placeholder_with_escaped_close_then_text():
+    # \} inside the body is literal; the real }} later closes the placeholder
+    # and the text after stays outside. The body includes the escaped \}.
+    out = format(r"{{a\}}rest}}tail", {"a\\}}rest": "v"})
+    assert out == "vtail"

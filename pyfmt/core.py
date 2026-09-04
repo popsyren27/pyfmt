@@ -68,7 +68,9 @@ def _scan(template: str) -> Iterator[Segment]:
 
             yield TextSegment(template[i:open_at])
 
-        close_at = template.find(_RIGHT, open_at + _LEFT_LEN)
+        # Find the matching }} by scanning forward, treating \}
+        # pairs as escaped literals that don't close the placeholder.
+        close_at = _find_closing(template, open_at + _LEFT_LEN)
         if close_at == -1:
             # Unterminated placeholder. Keep the rest of the string as is
             # rather than dropping it, otherwise the user gets a confusing
@@ -91,6 +93,22 @@ def _scan(template: str) -> Iterator[Segment]:
         yield PlaceholderSegment(name=name, raw=raw, default=default)
 
         i = close_at + _RIGHT_LEN
+
+
+def _find_closing(template: str, start: int) -> int:
+    """Return the index of the first ``}}`` at or after ``start`` that is
+    not preceded by a backslash. Returns -1 if none is found.
+    """
+    i = start
+    length = len(template)
+    while i <= length - _RIGHT_LEN:
+        if i > 0 and template[i - 1] == "\\" and template[i] == "}":
+            i += 1
+            continue
+        if template[i : i + _RIGHT_LEN] == _RIGHT:
+            return i
+        i += 1
+    return -1
 
 
 def format(template: str, values: Mapping[str, object]) -> str:
