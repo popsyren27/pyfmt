@@ -30,6 +30,11 @@ format(r"\{{not a placeholder}}", {})
 # '{{not a placeholder}}'
 ```
 
+```python
+format(r"{{a\|b|fallback}}", {"a|b": "literal pipe in the name"})
+# 'literal pip in the name'
+```
+
 ## Install
 
 ```
