@@ -5,6 +5,17 @@ are left in the output untouched so the caller can decide what to do
 with them. The form ``{{name|default}}`` substitutes the literal
 ``default`` when the key is missing or its value is ``None``.
 
+A placeholder may also carry an explicit type specifier,
+``{{name:type}}``, where ``type`` is one of ``d`` (int), ``f`` (float),
+or ``s`` (str). This is a validation contract, not a coercion request:
+the value is still rendered with plain ``str()`` exactly as before, but
+if the value's actual type doesn't match the specifier, ``format()``
+raises ``TypeError`` rather than silently stringifying it. ``bool`` is
+never accepted for ``d`` even though it is technically an ``int``
+subclass. A type specifier combines with a default as
+``{{name:type|default}}``; the default itself is never type-checked,
+since it's always a literal string.
+
 A backslash before a brace or pipe (``\{``, ``\}``, ``\|``) escapes the
 following character so it is treated as a literal. The backslash
 itself is consumed.
@@ -21,6 +32,9 @@ _RIGHT = "}}"
 _LEFT_LEN = len(_LEFT)
 _RIGHT_LEN = len(_RIGHT)
 
+# Recognized {{name:type}} specifiers and the label used in error messages.
+_TYPE_LABELS = {"d": "int", "f": "float", "s": "str"}
+
 
 @dataclass(frozen=True)
 class TextSegment:
@@ -32,6 +46,7 @@ class PlaceholderSegment:
     name: str
     raw: str  # The original "{{...}}" text from the template, with original whitespace.
     default: str | None = None  # The literal after the pipe, if any.
+    type: str | None = None  # "d" / "f" / "s" from a {{name:type}} spec, if any.
 
 
 Segment = Union[TextSegment, PlaceholderSegment]
@@ -85,14 +100,32 @@ def _scan(template: str) -> Iterator[Segment]:
         cleaned = _clean_body(inner).strip()
 
         if "|" in cleaned:
-            name, _, default = cleaned.partition("|")
-            name = name.strip()
+            name_part, _, default = cleaned.partition("|")
+            name_part = name_part.strip()
             default = default.strip()
         else:
-            name = cleaned
+            name_part = cleaned
             default = None
 
-        yield PlaceholderSegment(name=name, raw=raw, default=default)
+        # An explicit type specifier, if any, is attached to the name with
+        # a colon: {{name:type}} or {{name:type|default}}. Only the first
+        # colon is significant, so a name that legitimately needs one
+        # should avoid this form or expect a ValueError here.
+        if ":" in name_part:
+            name, _, type_spec = name_part.partition(":")
+            name = name.strip()
+            type_spec = type_spec.strip()
+            if type_spec not in _TYPE_LABELS:
+                raise ValueError(
+                    f"unknown type specifier {type_spec!r} in placeholder "
+                    f"{{{{{name_part}}}}}; expected one of "
+                    f"{sorted(_TYPE_LABELS)}"
+                )
+        else:
+            name = name_part
+            type_spec = None
+
+        yield PlaceholderSegment(name=name, raw=raw, default=default, type=type_spec)
 
         i = close_at + _RIGHT_LEN
 
@@ -134,6 +167,22 @@ def _find_closing(template: str, start: int) -> int:
     return -1
 
 
+def _matches_type(value: object, type_spec: str) -> bool:
+    """Return whether ``value`` satisfies a ``{{name:type}}`` specifier.
+
+    This is an exact check, not a coercion: ``bool`` does not satisfy
+    ``"d"`` even though ``bool`` is technically an ``int`` subclass, and
+    an ``int`` does not satisfy ``"f"``. If it did, ``{{x:d}}`` would
+    silently accept ``True`` and print ``"True"``, which defeats the
+    point of asking for an explicit type.
+    """
+    if type_spec == "d":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if type_spec == "f":
+        return isinstance(value, float)
+    return isinstance(value, str)  # type_spec == "s"
+
+
 def format(template: str, values: Mapping[str, object]) -> str:
     r"""Replace ``{{name}}`` placeholders in ``template`` with values.
 
@@ -144,6 +193,13 @@ def format(template: str, values: Mapping[str, object]) -> str:
     missing from ``values`` or its value is ``None``, ``default`` is
     inserted as a literal string.
 
+    A placeholder may also declare an expected type with
+    ``{{name:type}}`` (``type`` is ``d``, ``f``, or ``s`` for int, float,
+    or str), optionally combined with a default as
+    ``{{name:type|default}}``. This does not change how the value is
+    rendered -- it's still just ``str(value)`` -- but raises
+    ``TypeError`` if the value's actual type doesn't match.
+
     A backslash before a brace or pipe (``\{``, ``\}``, ``\|``) escapes
     the following character so it is treated as a literal. The backslash
     itself is consumed.
@@ -153,7 +209,14 @@ def format(template: str, values: Mapping[str, object]) -> str:
     for segment in _scan(template):
         if isinstance(segment, PlaceholderSegment):
             if segment.name in values and values[segment.name] is not None:
-                parts.append(str(values[segment.name]))
+                value = values[segment.name]
+                if segment.type is not None and not _matches_type(value, segment.type):
+                    raise TypeError(
+                        f"{{{{{segment.name}:{segment.type}}}}} expects "
+                        f"{_TYPE_LABELS[segment.type]}, got "
+                        f"{type(value).__name__}"
+                    )
+                parts.append(str(value))
             elif segment.default is not None:
                 parts.append(segment.default)
             else:

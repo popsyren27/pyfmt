@@ -232,6 +232,90 @@ def test_escaped_open_brace_in_body_is_literal():
     assert out == "v"
 
 
+def test_type_specifier_int_accepts_int():
+    assert format("{{n:d}}", {"n":5}) == "5"
+
+
+def test_type_specifier_int_rejects_str():
+    with pytest.raises(TypeError):
+        format("{{n:d}}", {"n": "5"})
+
+
+def test_type_specifier_int_rejects_bool():
+    # bool is just a fancy version of int but an explcit :d specifier
+    # this is exact, not linient
+    with pytest.raises(TypeError):
+        format("{{n:d}}", {"n": True})
+
+
+def test_type_specifier_float_accepts_float():
+    assert format("{{x:f}}", {"x": 3.14}) == "3.14"
+
+
+def test_type_specifier_float_rejects_int():
+    # :f is exact too: int is not treated as close enough to a float.
+    with pytest.raises(TypeError):
+        format("{{x:f}}", {"x": 1})
+
+def test_type_specifier_string_accepts_str():
+    assert format("{{s:s}}", {"s": "hi"}) == "hi"
+ 
+ 
+def test_type_specifier_string_rejects_non_str():
+    with pytest.raises(TypeError):
+        format("{{s:s}}", {"s": 5})
+ 
+ 
+def test_type_specifier_does_not_change_rendering():
+    # The specifier only validates; it never reformats the value
+    # (no forced decimal places, no digit grouping, etc.).
+    assert format("{{x:f}}", {"x": 3.0}) == "3.0"
+ 
+ 
+def test_type_specifier_not_checked_when_key_missing():
+    # No value is substituted, so there's nothing to type-check against;
+    # the placeholder is just left visible like any other missing key.
+    assert format("{{n:d}}", {}) == "{{n:d}}"
+ 
+ 
+def test_type_specifier_not_checked_when_value_is_none():
+    assert format("{{n:d}}", {"n": None}) == "{{n:d}}"
+ 
+ 
+def test_type_specifier_with_default_missing_key():
+    assert format("{{n:d|0}}", {}) == "0"
+ 
+ 
+def test_type_specifier_with_default_none_value():
+    assert format("{{n:d|0}}", {"n": None}) == "0"
+ 
+ 
+def test_type_specifier_with_default_and_matching_value():
+    assert format("{{n:d|0}}", {"n": 7}) == "7"
+ 
+ 
+def test_type_specifier_with_default_and_mismatched_value_still_raises():
+    # A default doesn't excuse a present-but-wrong-typed value; only a
+    # missing/None value falls through to the default.
+    with pytest.raises(TypeError):
+        format("{{n:d|0}}", {"n": "not a number"})
+ 
+ 
+def test_type_specifier_default_is_not_itself_type_checked():
+    # The default is always a literal string, regardless of the
+    # declared type -- it's rendered as-is, not validated or converted.
+    assert format("{{n:d|not-a-number}}", {}) == "not-a-number"
+ 
+ 
+def test_type_specifier_whitespace_is_stripped():
+    assert format("{{ n : d }}", {"n": 5}) == "5"
+ 
+ 
+def test_unknown_type_specifier_raises_value_error():
+    with pytest.raises(ValueError):
+        format("{{n:z}}", {"n": 5})
+ 
+ 
 def test_escaped_pipe_in_body_splits_at_real_pipe_only():
     # \| is consumed as an escape, so the first real | is the
     # name/default split. The cleaned body is "a|b|c"; split gives
