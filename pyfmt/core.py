@@ -19,10 +19,18 @@ since it's always a literal string.
 The ``d`` specifier alone additionally accepts a width, and an
 optional zero-pad flag, in front of it: ``{{n:5d}}`` right-aligns to a
 width of 5 with spaces, ``{{n:05d}}`` zero-pads to width 5 instead
-(sign-aware, so ``-42`` renders as ``-0042``). This is the one place
-this module *does* reformat rather than just validate -- it's asked
-for explicitly by the width syntax, and only applies to ``d``; ``f``
-and ``s`` don't take a width.
+(sign-aware, so ``-42`` renders as ``-0042``). This is one of the two
+places this module *does* reformat rather than just validate -- it's
+asked for explicitly by the width syntax, and only applies to ``d``;
+bare ``f`` and ``s`` don't take a width.
+
+The ``f`` specifier similarly accepts an explicit precision,
+``{{x:.2f}}``, which rounds/pads to that many digits after the decimal
+point (``{{x:.2f}}`` on ``3.0`` renders ``3.00``). An optional width
+may precede the dot, with an optional zero-pad flag, e.g.
+``{{x:8.2f}}`` or ``{{x:08.2f}}``, following the same width/zero-pad
+rules as ``d``. A bare ``f`` with no precision is still rendered with
+plain ``str()`` as before; ``s`` never takes a width or precision.
 
 A backslash before a brace or pipe (``\{``, ``\}``, ``\|``) escapes the
 following character so it is treated as a literal. The backslash
@@ -46,6 +54,9 @@ _TYPE_LABELS = {"d": "int", "f": "float", "s": "str"}
 # {{n:d}}, {{n:5d}}, {{n:05d}} -- optional zero-pad flag, optional width,
 # then the literal "d". Only "d" gets width/zero-pad; "f" and "s" don't.
 _INT_FORMAT_RE = re.compile(r"^0?\d*d$")
+# {{x:.2f}}, {{x:8.2f}}, {{x:08.2f}} -- optional zero-pad flag, optional
+# width, a mandatory dot, one or more precision digits, then "f".
+_FLOAT_FORMAT_RE = re.compile(r"^0?\d*\.\d+f$")
 
 
 @dataclass(frozen=True)
@@ -127,11 +138,16 @@ def _scan(template: str) -> Iterator[Segment]:
             name, _, type_spec = name_part.partition(":")
             name = name.strip()
             type_spec = type_spec.strip()
-            if type_spec not in ("f", "s") and not _INT_FORMAT_RE.fullmatch(type_spec):
+            if (
+                type_spec not in ("f", "s")
+                and not _INT_FORMAT_RE.fullmatch(type_spec)
+                and not _FLOAT_FORMAT_RE.fullmatch(type_spec)
+            ):
                 raise ValueError(
                     f"unknown type specifier {type_spec!r} in placeholder "
                     f"{{{{{name_part}}}}}; expected d/f/s, optionally with "
-                    f"a width and zero-pad flag on d (e.g. 05d)"
+                    f"a width and zero-pad flag on d (e.g. 05d), or a "
+                    f"width and/or precision on f (e.g. .2f, 08.2f)"
                 )
         else:
             name = name_part
@@ -207,8 +223,9 @@ def _find_closing(template: str, start: int) -> int:
 def _matches_type(value: object, type_spec: str) -> bool:
     """Return whether ``value`` satisfies a ``{{name:type}}`` specifier.
 
-    ``type_spec`` may be a bare letter (``"d"``, ``"f"``, ``"s"``) or,
-    for ints, carry a width/zero-pad prefix (``"5d"``, ``"05d"``) --
+    ``type_spec`` may be a bare letter (``"d"``, ``"f"``, ``"s"``) or
+    carry a width/zero-pad prefix for ints (``"5d"``, ``"05d"``) or a
+    width/precision for floats (``".2f"``, ``"8.2f"``, ``"08.2f"``) --
     only the trailing letter matters for the type check itself.
 
     This is an exact check, not a coercion: ``bool`` does not satisfy
@@ -244,8 +261,10 @@ def format(template: str, values: Mapping[str, object]) -> str:
 
     ``d`` alone also accepts a width and an optional zero-pad flag in
     front of it, e.g. ``{{n:5d}}`` (space-padded to width 5) or
-    ``{{n:05d}}`` (zero-padded, sign-aware). This is the one case where
-    the value *is* reformatted rather than just validated.
+    ``{{n:05d}}`` (zero-padded, sign-aware). ``f`` similarly accepts an
+    explicit precision, e.g. ``{{x:.2f}}``, optionally preceded by a
+    width and zero-pad flag, e.g. ``{{x:08.2f}}``. These are the cases
+    where the value *is* reformatted rather than just validated.
 
     A backslash before a brace or pipe (``\{``, ``\}``, ``\|``) escapes
     the following character so it is treated as a literal. The backslash
@@ -265,7 +284,8 @@ def format(template: str, values: Mapping[str, object]) -> str:
                             f"{type(value).__name__}"
                         )
                     if segment.type not in ("d", "f", "s"):
-                        # A d-with-width spec like "05d" -- the one case
+                        # A d-with-width spec like "05d" or an f-with-
+                        # precision spec like ".2f" -- the cases where
                         # this module actually reformats the value.
                         parts.append(("{:" + segment.type + "}").format(value))
                     else:

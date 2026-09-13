@@ -372,6 +372,42 @@ def test_width_not_supported_on_float_or_string():
         format("{{s:5s}}", {"s": "hi"})
 
 
+def test_float_precision_rounds_and_pads_decimals():
+    assert format("{{x:.2f}}", {"x": 3.14159}) == "3.14"
+    assert format("{{x:.4f}}", {"x": 3.1}) == "3.1000"
+
+
+def test_float_precision_round_to_nearest():
+    assert format("{{x:.2f}}", {"x": 2.674}) == "2.67"  # rounds down
+
+
+def test_float_precision_still_rejects_int():
+    with pytest.raises(TypeError):
+        format("{{x:.2f}}", {"x": 3})
+
+
+def test_float_precision_with_pads_with_spaces():
+    assert format("{{x:8.2f}}", {"x": 3.14159}) == "    3.14"
+
+
+def test_float_precision_zero_pad_is_sign_aware():
+    assert format("{{x:08.2f}}", {"x": -3.14159}) == "-0003.14"
+    assert format("{{x:08.2f}}", {"x": 3.14159}) == "00003.14"
+
+
+def test_float_precision_combines_with_default():
+    assert format("{{x:.2f|missing}}", {}) == "missing"
+    assert format("{{x:.2f|missing}}", {"x": None}) == "missing"
+    assert format("{{x:.2f|missing}}", {"x": 3.0}) == "3.00"
+
+
+def test_precision_not_supported_on_int_or_string():
+    # Precision syntax is scoped to floats only.
+    with pytest.raises(ValueError):
+        format("{{n:.2d}}", {"n": 5})
+    with pytest.raises(ValueError):
+        format("{{s:.2s}}", {"s": "hi"})
+
 def test_escaped_pipe_in_body_splits_at_real_pipe_only():
     # \| is consumed as an escape, so the first real | is the
     # name/default split. The cleaned body is "a|b|c"; split gives
